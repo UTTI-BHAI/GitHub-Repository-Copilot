@@ -1,0 +1,561 @@
+Project: AI GitHub Repository Copilot (Advanced RAG-Based Code Understanding System)
+
+The goal of this project is to build an AI assistant that can understand any GitHub repository and answer questions about it in natural language. Instead of forcing a developer to manually open dozens of files and search through thousands of lines of code, the system will analyze the repository, understand its structure, store semantic representations of the code, and allow users to ask questions such as:
+
+How does authentication work?
+
+Where is JWT generated?
+
+Explain the project architecture.
+
+Which files are responsible for database operations?
+
+Generate onboarding documentation for a new developer.
+
+Explain the API flow.
+
+What happens when a user logs in?
+
+The project is not simply a chatbot connected to GitHub. The objective is to build a system that can understand software projects at multiple levels, including documentation, folder structure, source code, dependencies, commit history, and architecture.
+
+Why We Need This
+
+Imagine you join a company and receive a codebase containing:
+
+200 folders
+1200 files
+150,000 lines of code
+
+Even experienced developers spend days understanding:
+
+Authentication flow
+API structure
+Database models
+Service communication
+Business logic
+
+The AI Repository Copilot aims to reduce this onboarding process from days to minutes.
+
+Instead of reading everything manually, a developer can ask:
+
+Explain the authentication system.
+
+and immediately receive a detailed explanation.
+
+Core Idea
+
+The project is based on RAG (Retrieval-Augmented Generation).
+
+RAG consists of two stages:
+
+Retrieval
+
+Find relevant information.
+
+Generation
+
+Use an LLM to generate an answer based on that information.
+
+Without retrieval, the LLM would have no knowledge of the repository.
+
+Without generation, the user would only receive raw code.
+
+The combination gives meaningful answers.
+
+High-Level System Flow
+GitHub Repository
+       ↓
+Repository Analysis
+       ↓
+Code Chunking
+       ↓
+Embedding Generation
+       ↓
+Vector Database Storage
+       ↓
+User Query
+       ↓
+Query Embedding
+       ↓
+Semantic Search
+       ↓
+Relevant Code Retrieval
+       ↓
+LLM
+       ↓
+Natural Language Answer
+Step 1: User Provides Repository
+
+The user enters:
+
+https://github.com/owner/project
+
+The backend receives the URL.
+
+The repository is cloned.
+
+git clone repository_url
+
+Now the server has access to:
+
+project/
+├── src/
+├── backend/
+├── frontend/
+├── auth.py
+├── README.md
+├── package.json
+└── requirements.txt
+Step 2: Repository Analysis
+
+This stage is often skipped by beginner projects.
+
+Most people immediately start embedding files.
+
+Instead, we first understand the repository.
+
+The system identifies:
+
+Languages
+Python
+JavaScript
+TypeScript
+Java
+C++
+Go
+Frameworks
+React
+FastAPI
+Spring Boot
+Express
+Django
+Dependencies
+package.json
+requirements.txt
+pom.xml
+Folder Structure
+backend/
+frontend/
+database/
+services/
+api/
+
+The folder structure itself contains valuable information.
+
+For example:
+
+backend/
+ ├── auth/
+ ├── api/
+ ├── models/
+ ├── database/
+
+Already suggests the architecture.
+
+Step 3: Multi-Layer Knowledge Creation
+
+This is where our system becomes smarter than basic RAG.
+
+Instead of treating everything as plain text, we create multiple layers of knowledge.
+
+Layer 1: Documentation Layer
+
+Files:
+
+README.md
+docs/
+wiki/
+
+Contains:
+
+Project purpose
+Setup instructions
+Architecture descriptions
+Features
+
+Questions answered:
+
+What does this project do?
+
+How do I install it?
+
+What technologies are used?
+Layer 2: Structure Layer
+
+Contains:
+
+Folder hierarchy
+Dependencies
+Imports
+Relationships
+
+Example:
+
+backend/
+ ├── auth
+ ├── database
+ └── api
+
+Questions answered:
+
+Explain architecture.
+
+How is the project organized?
+Layer 3: File Summary Layer
+
+Every source file gets summarized.
+
+Example:
+
+auth.py
+
+Summary:
+
+Handles login,
+password verification,
+JWT creation,
+refresh tokens.
+
+Questions answered:
+
+Which file handles authentication?
+Layer 4: Function/Class Layer
+
+Contains actual code chunks.
+
+Example:
+
+def login():
+def create_jwt():
+class AuthService:
+
+Questions answered:
+
+Explain login flow.
+
+How is JWT generated?
+Step 4: Chunking
+
+This is one of the most important parts.
+
+What Is Chunking?
+
+LLMs cannot process entire repositories.
+
+We break content into smaller pieces called chunks.
+
+Bad Chunking
+
+Many tutorials use:
+
+RecursiveCharacterTextSplitter
+
+Example:
+
+1000 characters
+
+This often splits functions in the middle.
+
+Example:
+
+def login():
+
+might be separated from its body.
+
+This destroys context.
+
+Good Chunking
+
+Chunk based on:
+
+Functions
+def login():
+Classes
+class UserService:
+API Routes
+@app.post("/login")
+Modules
+auth.py
+
+Each chunk represents a complete logical unit.
+
+Step 5: Metadata Creation
+
+Every chunk gets metadata.
+
+Example:
+
+{
+  "file": "auth.py",
+  "path": "backend/auth.py",
+  "function": "login",
+  "language": "python",
+  "type": "function"
+}
+
+Metadata helps identify where information came from.
+
+Without metadata:
+
+LLM knows code
+
+With metadata:
+
+LLM knows code
+AND
+where it exists
+Step 6: Embeddings
+
+This is where most people get confused.
+
+What Is An Embedding?
+
+Computers do not understand meaning.
+
+They only understand numbers.
+
+Suppose we have:
+
+login
+authentication
+signin
+
+Humans know these are related.
+
+Computers don't.
+
+We convert text into vectors.
+
+Example:
+
+login function
+
+becomes:
+
+[0.12, -0.45, 0.88, 0.22, ...]
+
+Hundreds or thousands of numbers.
+
+This vector captures meaning.
+
+Embedding Model
+
+Possible models:
+
+BGE Large
+OpenAI Embeddings
+E5
+Instructor XL
+
+For each chunk:
+
+Chunk
+ ↓
+Embedding Model
+ ↓
+Vector
+Why Embeddings Matter
+
+Suppose code contains:
+
+def login():
+
+User asks:
+
+Explain authentication.
+
+Word matching fails.
+
+Because:
+
+authentication ≠ login
+
+Embeddings solve this.
+
+Vectors for:
+
+login
+authentication
+signin
+access control
+
+end up close together in vector space.
+
+Step 7: Vector Database
+
+Now every chunk has:
+
+Code
++
+Embedding
++
+Metadata
+
+Store them in Qdrant.
+
+Example:
+
+Qdrant
+ ├── login chunk
+ ├── jwt chunk
+ ├── middleware chunk
+ └── database chunk
+
+Qdrant is essentially Google Search for vectors.
+
+Step 8: User Query
+
+User asks:
+
+How does authentication work?
+Step 9: Query Embedding
+
+The question is also converted into a vector.
+
+Question
+ ↓
+Embedding Model
+ ↓
+Vector
+
+Example:
+
+[0.10, -0.47, 0.84, ...]
+Step 10: Similarity Search
+
+Qdrant compares:
+
+Question Vector
+
+against
+
+All Stored Vectors
+
+Using cosine similarity.
+
+The nearest vectors are retrieved.
+
+Example:
+
+auth.py login()
+jwt.py create_token()
+middleware.py verify_token()
+Step 11: Retrieval Layer
+
+The retriever selects:
+
+Top 5
+Top 10
+Top 20
+
+most relevant chunks.
+
+This is the "R" in RAG.
+
+Retrieval.
+
+Step 12: Prompt Construction
+
+Now we build a prompt.
+
+Example:
+
+Question:
+
+How does authentication work?
+
+Context:
+
+auth.py
+...
+
+jwt.py
+...
+
+middleware.py
+...
+Step 13: Generation
+
+Prompt sent to:
+
+Gemini
+GPT
+Claude
+
+The LLM analyzes retrieved chunks.
+
+Generates:
+
+Authentication begins in auth.py where
+credentials are verified. A JWT token is
+created in jwt.py and validated through
+middleware.py before protected routes
+can be accessed.
+
+This is the "G" in RAG.
+
+Generation.
+
+Commit History Integration
+
+This is optional but powerful.
+
+Store:
+
+Git commits
+
+Example:
+
+Added JWT Authentication
+Fixed Token Expiry
+Implemented Refresh Tokens
+
+Questions:
+
+How did authentication evolve?
+
+When was JWT introduced?
+
+Now the system understands both:
+
+Current code
+Historical changes
+Future Advanced Features
+Architecture Diagram Generator
+
+Generate:
+
+Frontend
+   ↓
+API
+   ↓
+Service Layer
+   ↓
+Database
+Bug Investigator
+
+Question:
+
+Why might login fail?
+
+Retrieve:
+
+Authentication code
+Error handling
+Middleware
+
+Generate root-cause analysis.
+
+Documentation Generator
+
+Generate:
+
+README
+API Docs
+Developer Guide
+
+Automatically.
+
+Final Understanding
+
+This project is essentially building an AI engineer that studies a repository before the user arrives. It reads documentation, understands folder structures, summarizes files, extracts functions and classes, converts them into embeddings, stores them in a vector database, and uses retrieval to find relevant pieces whenever a user asks a question. The retrieved context is then sent to an LLM, which generates a natural-language explanation. Instead of reading an entire codebase manually, the user interacts with the repository through conversation. The key idea is that the LLM never memorizes the repository; it only receives the most relevant pieces through retrieval. Embeddings allow semantic understanding rather than keyword matching, metadata preserves file locations and context, vector databases enable fast search, and RAG combines all of these components into a system that can explain, analyze, document, and reason about software projects. This is what transforms a simple code repository into an interactive AI-powered software engineering assistant.

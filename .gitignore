@@ -1,0 +1,18 @@
+# Virtual environment
+venv/
+
+# Cloned repositories
+repos/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# VS Code
+.vscode/
+
+# IDE
+.idea/
