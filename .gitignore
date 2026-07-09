@@ -1,18 +1,19 @@
-# Virtual environment
+# Python
 venv/
-
-# Cloned repositories
-repos/
-
-# Python cache
 __pycache__/
 *.pyc
 
-# Environment variables
+# Environment
 .env
 
-# VS Code
-.vscode/
+# Local repositories cloned by the app
+repos/
+
+# Database cache
+*.db
 
 # IDE
-.idea/
+.vscode/
+
+# Logs
+*.log

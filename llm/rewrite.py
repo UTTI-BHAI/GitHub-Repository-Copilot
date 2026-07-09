@@ -6,7 +6,10 @@ def rewrite_question(question, history):
     if len(history) == 0:
         return question
 
-    history_text = "\n".join(history[-3:])
+    history_text = ""
+
+    for item in history[-3:]:
+        history_text += f"User: {item['question']}\n"
 
     prompt = f"""
 Rewrite the current question into a standalone question.
