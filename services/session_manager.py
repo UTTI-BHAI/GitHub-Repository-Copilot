@@ -1,31 +1,30 @@
-import uuid
+"""
+services/session_manager.py
 
-sessions = {}
+TEMPORARY in-memory cache for `all_chunks`, keyed by repository id.
 
+This is the LAST remaining piece of RAM state. It exists only because BM25
+(keyword_search) and dependency expansion still read from the in-memory
+all_chunks list. It will be deleted in blocker B, once retrieval is backed
+by Qdrant / the database instead.
 
-def create_session(repo_name, url, all_chunks):
-    session_id = str(uuid.uuid4())
+Project rule: do NOT delete this module until all_chunks is gone. Repo
+metadata and chat history now live in Postgres — this cache holds nothing
+that needs to survive a restart.
+"""
 
-    sessions[session_id] = {
-        "repo_name": repo_name,
-        "url": url,
-        "all_chunks": all_chunks,
-        "chat_history": []
-    }
-
-    return session_id
-
-
-def get_session(session_id):
-    return sessions.get(session_id)
+_chunks_by_repo: dict[int, list] = {}
 
 
-def list_sessions():
-    return [
-        {
-            "id": sid,
-            "repo_name": session["repo_name"],
-            "url": session["url"]
-        }
-        for sid, session in sessions.items()
-    ]
+def cache_chunks(repository_id: int, all_chunks: list) -> None:
+    _chunks_by_repo[repository_id] = all_chunks
+
+
+def get_chunks(repository_id: int):
+    """Returns the cached chunks, or None if this repo hasn't been loaded
+    in the current process (e.g. after a restart)."""
+    return _chunks_by_repo.get(repository_id)
+
+
+def has_chunks(repository_id: int) -> bool:
+    return repository_id in _chunks_by_repo
