@@ -14,16 +14,25 @@ from vector_store import (
     ensure_collection,
     collection_point_count,
 )
+import chunk_store
 
 
 def index_repository(url, collection_name):
     """
-    Clone, chunk, and (if needed) embed a repository into its OWN collection.
+    Clone, chunk, and embed a repository into its OWN Qdrant collection.
 
-    all_chunks is always rebuilt because it is still required in memory by
-    BM25 and dependency expansion (blocker B). Embedding is skipped when the
-    collection already holds points.
+    Returns nothing. Chunks are no longer handed back to the caller — Qdrant
+    is the source of truth, and retrieval reads from it via chunk_store.
+
+    Cloning and chunking are skipped entirely when the collection is already
+    populated, so re-opening an indexed repository does no filesystem work.
     """
+    ensure_collection(collection_name)
+
+    if collection_point_count(collection_name) > 0:
+        print(f"{collection_name} already indexed - skipping")
+        return
+
     all_chunks = []
 
     repo_path = clone_repository(url)
@@ -34,74 +43,62 @@ def index_repository(url, collection_name):
         chunks = extract_chunks(content, file)
         all_chunks.extend(chunks)
 
-    ensure_collection(collection_name)
+    print(f"Indexing {len(all_chunks)} chunks into {collection_name}")
 
-    # Checked at call time, per collection. Previously this was a module-level
-    # value read once at import, which went stale after the first index and
-    # caused repeated re-embedding with colliding point ids.
-    if collection_point_count(collection_name) == 0:
+    points = []
 
-        print(f"Indexing {len(all_chunks)} chunks into {collection_name}")
+    for i, chunk in enumerate(all_chunks):
 
-        points = []
+        text_to_embed = f"""
+        File: {chunk['file']}
+        Name: {chunk['name']}
+        Type: {chunk['type']}
 
-        for i, chunk in enumerate(all_chunks):
+        Code:
+        {chunk['code']}
+        """
 
-            text_to_embed = f"""
-            Name: {chunk['name']}
-            Type: {chunk['type']}
+        embedding = get_embedding(text_to_embed)
 
-            Code:
-            {chunk['code']}
-            """
-
-            embedding = get_embedding(text_to_embed)
-
-            points.append(
-                PointStruct(
-                    id=i + 1,
-                    vector=embedding.tolist(),
-                    payload={
-                        "name": chunk["name"],
-                        "type": chunk["type"],
-                        "file": chunk["file"],
-                        "code": chunk["code"],
-                    },
-                )
+        points.append(
+            PointStruct(
+                id=i + 1,
+                vector=embedding.tolist(),
+                payload={
+                    "name": chunk["name"],
+                    "type": chunk["type"],
+                    "file": chunk["file"],
+                    "code": chunk["code"],
+                },
             )
+        )
 
-            # Batch upserts instead of one network round-trip per chunk.
-            if len(points) >= 128:
-                client.upsert(collection_name=collection_name, points=points)
-                points = []
-
-        if points:
+        # Batch upserts instead of one network round-trip per chunk.
+        if len(points) >= 128:
             client.upsert(collection_name=collection_name, points=points)
+            points = []
 
-    else:
-        print(f"{collection_name} already indexed — skipping embedding")
+    if points:
+        client.upsert(collection_name=collection_name, points=points)
 
-    return all_chunks
+    # Drop any cache built before this collection was populated.
+    chunk_store.invalidate(collection_name)
 
 
-def ask_question(query, all_chunks, chat_history, collection_name):
+def ask_question(query, chat_history, collection_name):
 
     rewritten_query = rewrite_question(query, chat_history)
 
     print(f"\nRewritten Query: {rewritten_query}")
 
-    rrf_results = hybrid_search(
-        rewritten_query,
-        all_chunks,
-        collection_name,
-    )
+    rrf_results = hybrid_search(rewritten_query, collection_name)
 
     merged = []
 
     for item in rrf_results[:5]:
         merged.append(item["chunk"])
 
-    dependency_chunks = get_dependencies(merged, all_chunks)
+    dependency_chunks = get_dependencies(merged, collection_name)
 
     merged.extend(dependency_chunks)
 

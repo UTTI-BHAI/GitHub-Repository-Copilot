@@ -1,33 +1,24 @@
-from rank_bm25 import BM25Okapi
+from chunk_store import get_bm25
 
 
-def keyword_search(query, chunks, top_k=5):
+def keyword_search(query, collection_name, top_k=5):
+    """
+    BM25 search scoped to one repository.
 
-    documents = []
+    Takes a collection name instead of an all_chunks list. The index is built
+    once per repository and cached, rather than rebuilt on every query.
+    """
+    bm25, chunks = get_bm25(collection_name)
 
-    for chunk in chunks:
+    if bm25 is None or not chunks:
+        return []
 
-        text = f"""
-        {chunk["name"]}
-        {chunk["type"]}
-
-        """
-
-        documents.append(
-            text.split()
-        )
-    
-
-    bm25 = BM25Okapi(documents)
-
-    scores = bm25.get_scores(
-        query.split()
-    )
+    scores = bm25.get_scores(query.split())
 
     ranked = sorted(
         zip(chunks, scores),
         key=lambda x: x[1],
-        reverse=True
+        reverse=True,
     )
 
     ranked = [

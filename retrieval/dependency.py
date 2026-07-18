@@ -1,24 +1,26 @@
 import re
+
 from retrieval.keyword_search import keyword_search
 
 
-def get_dependencies(chunks, all_chunks):
+def get_dependencies(chunks, collection_name):
+    """
+    Regex-based dependency expansion.
 
+    The all_chunks parameter is gone — lookups now go through BM25, which
+    reads from the repository's Qdrant collection.
+
+    Still heuristic (blocker G): a persistent dependency graph would be more
+    accurate than regex plus a keyword lookup, but that is a separate change.
+    """
     dependencies = []
 
     for chunk in chunks:
-
         code = chunk["code"]
-
-        calls = re.findall(
-            r"\.(\w+)\(",
-            code
-        )
-
+        calls = re.findall(r"\.(\w+)\(", code)
         dependencies.extend(calls)
 
     extra_chunks = []
-
     seen = set()
 
     for dep in dependencies:
@@ -28,11 +30,7 @@ def get_dependencies(chunks, all_chunks):
 
         seen.add(dep)
 
-        results = keyword_search(
-            dep,
-            all_chunks,
-            top_k=1
-        )
+        results = keyword_search(dep, collection_name, top_k=1)
 
         if not results:
             continue
