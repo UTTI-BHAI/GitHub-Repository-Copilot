@@ -1,11 +1,12 @@
-from langchain_ollama import ChatOllama
+from llm.provider import complete
 
-llm = ChatOllama(
-    model="llama3.2:latest"
-)
 
 def generate_answer(prompt):
+    """
+    Single entry point for LLM calls.
 
-    response = llm.invoke(prompt)
-
-    return response.content
+    Provider selection now lives in llm/provider.py and is driven by the
+    LLM_PROVIDER environment variable, so switching between Gemini and a
+    local Ollama model is config, not code.
+    """
+    return complete(prompt)
