@@ -12,19 +12,24 @@ import os
 import re
 import hashlib
 
-from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
 
-load_dotenv()
-
+# Qdrant Cloud: set QDRANT_URL to the cluster URL and QDRANT_API_KEY to the key.
+# Local:        leave both unset and it falls back to localhost:6333.
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
-# bge-small-en-v1.5 produces 384-dimensional vectors.
-VECTOR_SIZE = 384
+# Must match EMBEDDING_DIM in embeddings.py. Changing it invalidates every
+# existing collection, so collections must be dropped and re-indexed.
+VECTOR_SIZE = int(os.getenv("EMBEDDING_DIM", "768"))
 
-client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+if QDRANT_URL:
+    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+else:
+    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 
 def collection_name_for(github_url: str) -> str:

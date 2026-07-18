@@ -58,12 +58,12 @@ def index_repository(url, collection_name):
         {chunk['code']}
         """
 
-        embedding = get_embedding(text_to_embed)
+        embedding = get_embedding(text_to_embed, task_type="RETRIEVAL_DOCUMENT")
 
         points.append(
             PointStruct(
                 id=i + 1,
-                vector=embedding.tolist(),
+                vector=embedding,
                 payload={
                     "name": chunk["name"],
                     "type": chunk["type"],
