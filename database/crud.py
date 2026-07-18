@@ -14,8 +14,17 @@ from __future__ import annotations
 from typing import Optional, List, Tuple
 
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
-from database.models import Repository, ChatSession, Message
+from database.models import (
+    Repository,
+    ChatSession,
+    Message,
+    INDEX_PENDING,
+    INDEX_RUNNING,
+    INDEX_READY,
+    INDEX_FAILED,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +66,60 @@ def list_repositories(db: Session) -> List[Repository]:
         .order_by(Repository.created_at.desc())
         .all()
     )
+
+
+def set_index_running(db: Session, repository_id: int) -> None:
+    repository = get_repository(db, repository_id)
+    if repository is None:
+        return
+    repository.index_status = INDEX_RUNNING
+    repository.index_error = None
+    db.commit()
+
+
+def set_index_ready(db: Session, repository_id: int, chunk_count: int) -> None:
+    repository = get_repository(db, repository_id)
+    if repository is None:
+        return
+    repository.index_status = INDEX_READY
+    repository.index_error = None
+    repository.chunk_count = chunk_count
+    repository.indexed_at = func.now()
+    db.commit()
+
+
+def set_index_failed(db: Session, repository_id: int, error: str) -> None:
+    repository = get_repository(db, repository_id)
+    if repository is None:
+        return
+    repository.index_status = INDEX_FAILED
+    # Truncated so a huge traceback can't bloat the row.
+    repository.index_error = error[:2000]
+    db.commit()
+
+
+def reset_stuck_indexing(db: Session) -> int:
+    """
+    Mark any repository left in 'indexing' as failed.
+
+    Background jobs run in-process, so a restart mid-index orphans the row.
+    Called once at startup so those repositories can be retried instead of
+    hanging in 'indexing' forever.
+    """
+    stuck = (
+        db.query(Repository)
+        .filter(Repository.index_status == INDEX_RUNNING)
+        .all()
+    )
+
+    for repository in stuck:
+        repository.index_status = INDEX_FAILED
+        repository.index_error = "Indexing was interrupted by a server restart."
+
+    if stuck:
+        db.commit()
+
+    return len(stuck)
 
 
 def get_or_create_repository(

@@ -1,7 +1,9 @@
+import os
+
 from clone_repo import clone_repository
 from read_files import get_source_files, read_file
 from chunker import extract_chunks
-from embeddings import get_embedding
+from embeddings import get_embedding, get_embeddings_batch
 from llm.generate import generate_answer
 from retrieval.hybrid import hybrid_search
 from retrieval.dependency import get_dependencies
@@ -21,17 +23,19 @@ def index_repository(url, collection_name):
     """
     Clone, chunk, and embed a repository into its OWN Qdrant collection.
 
-    Returns nothing. Chunks are no longer handed back to the caller — Qdrant
-    is the source of truth, and retrieval reads from it via chunk_store.
+    Returns the number of chunks indexed. Chunks themselves are not handed
+    back — Qdrant is the source of truth, and retrieval reads from it via
+    chunk_store.
 
     Cloning and chunking are skipped entirely when the collection is already
     populated, so re-opening an indexed repository does no filesystem work.
     """
     ensure_collection(collection_name)
 
-    if collection_point_count(collection_name) > 0:
+    existing = collection_point_count(collection_name)
+    if existing > 0:
         print(f"{collection_name} already indexed - skipping")
-        return
+        return existing
 
     all_chunks = []
 
@@ -45,11 +49,11 @@ def index_repository(url, collection_name):
 
     print(f"Indexing {len(all_chunks)} chunks into {collection_name}")
 
-    points = []
-
-    for i, chunk in enumerate(all_chunks):
-
-        text_to_embed = f"""
+    # Build every input first, then embed in batches. One request per chunk
+    # burned free-tier quota fast; batching cuts a 449-chunk repo from 449
+    # requests to about 5.
+    texts = [
+        f"""
         File: {chunk['file']}
         Name: {chunk['name']}
         Type: {chunk['type']}
@@ -57,32 +61,39 @@ def index_repository(url, collection_name):
         Code:
         {chunk['code']}
         """
+        for chunk in all_chunks
+    ]
 
-        embedding = get_embedding(text_to_embed, task_type="RETRIEVAL_DOCUMENT")
+    embeddings = get_embeddings_batch(texts, task_type="RETRIEVAL_DOCUMENT")
 
-        points.append(
-            PointStruct(
-                id=i + 1,
-                vector=embedding,
-                payload={
-                    "name": chunk["name"],
-                    "type": chunk["type"],
-                    "file": chunk["file"],
-                    "code": chunk["code"],
-                },
-            )
+    points = [
+        PointStruct(
+            id=i + 1,
+            vector=embedding,
+            payload={
+                "name": chunk["name"],
+                "type": chunk["type"],
+                "file": chunk["file"],
+                "code": chunk["code"],
+            },
         )
+        for i, (chunk, embedding) in enumerate(zip(all_chunks, embeddings))
+    ]
 
-        # Batch upserts instead of one network round-trip per chunk.
-        if len(points) >= 128:
-            client.upsert(collection_name=collection_name, points=points)
-            points = []
+    # Upsert in batches rather than one round-trip per point. Kept modest
+    # because each point carries a 768-dim vector plus the full source code,
+    # and the cluster may be in a distant region — oversized payloads time out.
+    upsert_batch = int(os.getenv("QDRANT_UPSERT_BATCH", "64"))
 
-    if points:
-        client.upsert(collection_name=collection_name, points=points)
+    for start in range(0, len(points), upsert_batch):
+        window = points[start:start + upsert_batch]
+        client.upsert(collection_name=collection_name, points=window)
+        print(f"Upserted {min(start + upsert_batch, len(points))}/{len(points)}")
 
     # Drop any cache built before this collection was populated.
     chunk_store.invalidate(collection_name)
+
+    return len(all_chunks)
 
 
 def ask_question(query, chat_history, collection_name):
