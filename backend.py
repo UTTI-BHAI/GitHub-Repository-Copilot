@@ -7,54 +7,43 @@ from retrieval.hybrid import hybrid_search
 from retrieval.dependency import get_dependencies
 from llm.rewrite import rewrite_question
 
-
-
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams
 from qdrant_client.models import PointStruct
 
-client = QdrantClient(
-    host="localhost",
-    port=6333
+from vector_store import (
+    client,
+    ensure_collection,
+    collection_point_count,
 )
 
-collections = client.get_collections()
 
-if "repo_chunks" not in [
-    c.name for c in collections.collections
-]:
-    client.create_collection(
-        collection_name="repo_chunks",
-        vectors_config=VectorParams(
-            size=384,
-            distance="Cosine"
-        )
-    )
+def index_repository(url, collection_name):
+    """
+    Clone, chunk, and (if needed) embed a repository into its OWN collection.
 
-collection_info = client.get_collection(
-    "repo_chunks"
-)
-
-print(
-    f"Points stored: {collection_info.points_count}"
-)
-
-def index_repository(url):
+    all_chunks is always rebuilt because it is still required in memory by
+    BM25 and dependency expansion (blocker B). Embedding is skipped when the
+    collection already holds points.
+    """
     all_chunks = []
-    repo_path = clone_repository(url)
 
+    repo_path = clone_repository(url)
     files = get_source_files(repo_path)
 
     for file in files:
         content = read_file(file)
-
-        chunks = extract_chunks(content, file)  
-
+        chunks = extract_chunks(content, file)
         all_chunks.extend(chunks)
 
-    if collection_info.points_count == 0:
+    ensure_collection(collection_name)
 
-        print(len(all_chunks))
+    # Checked at call time, per collection. Previously this was a module-level
+    # value read once at import, which went stale after the first index and
+    # caused repeated re-embedding with colliding point ids.
+    if collection_point_count(collection_name) == 0:
+
+        print(f"Indexing {len(all_chunks)} chunks into {collection_name}")
+
+        points = []
 
         for i, chunk in enumerate(all_chunks):
 
@@ -68,38 +57,43 @@ def index_repository(url):
 
             embedding = get_embedding(text_to_embed)
 
-            client.upsert(
-                collection_name="repo_chunks",
-                points=[
-                    PointStruct(
-                        id=i+1,
-                        vector=embedding.tolist(),
-                        payload={
-                            "name": chunk["name"],
-                            "type": chunk["type"],
-                            "file": chunk["file"],
-                            "code": chunk["code"]
-                        }
-                    )
-                ]
+            points.append(
+                PointStruct(
+                    id=i + 1,
+                    vector=embedding.tolist(),
+                    payload={
+                        "name": chunk["name"],
+                        "type": chunk["type"],
+                        "file": chunk["file"],
+                        "code": chunk["code"],
+                    },
+                )
             )
-    return all_chunks
-def ask_question(
-    query,
-    all_chunks,
-    chat_history
-):
 
-    rewritten_query = rewrite_question(
-        query,
-        chat_history
-    )
+            # Batch upserts instead of one network round-trip per chunk.
+            if len(points) >= 128:
+                client.upsert(collection_name=collection_name, points=points)
+                points = []
+
+        if points:
+            client.upsert(collection_name=collection_name, points=points)
+
+    else:
+        print(f"{collection_name} already indexed — skipping embedding")
+
+    return all_chunks
+
+
+def ask_question(query, all_chunks, chat_history, collection_name):
+
+    rewritten_query = rewrite_question(query, chat_history)
 
     print(f"\nRewritten Query: {rewritten_query}")
 
     rrf_results = hybrid_search(
         rewritten_query,
-        all_chunks
+        all_chunks,
+        collection_name,
     )
 
     merged = []
@@ -107,19 +101,14 @@ def ask_question(
     for item in rrf_results[:5]:
         merged.append(item["chunk"])
 
-    dependency_chunks = get_dependencies(
-        merged,
-        all_chunks
-    )
+    dependency_chunks = get_dependencies(merged, all_chunks)
 
     merged.extend(dependency_chunks)
 
     unique = {}
 
     for chunk in merged:
-
         key = chunk["file"] + chunk["name"]
-
         unique[key] = chunk
 
     merged = list(unique.values())
@@ -127,7 +116,6 @@ def ask_question(
     context = ""
 
     for chunk in merged:
-
         context += f"""
         FILE: {chunk["file"]}
         TYPE: {chunk["type"]}
@@ -142,7 +130,6 @@ def ask_question(
     history_text = ""
 
     for item in chat_history[-5:]:
-
         history_text += f"""
         Previous User Question:
         {item["question"]}
@@ -192,20 +179,10 @@ def ask_question(
         current Question:
     {query}
         """
+
     print("Context length:", len(context))
     print("Prompt length:", len(prompt))
+
     answer = generate_answer(prompt)
 
-    chat_history.append({
-        "question": query,
-        "functions": [chunk["name"] for chunk in merged]
-        })
-
     return answer
-
-
-
-
-
-
-
