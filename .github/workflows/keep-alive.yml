@@ -1,0 +1,45 @@
+name: Keep Supabase awake
+
+# Supabase pauses free-tier projects after 7 days without database activity,
+# and resuming is a manual click in the dashboard. A single query every few
+# days resets that timer, so the project stays reachable even during quiet
+# stretches — which matters when someone opens the link unannounced.
+
+on:
+  schedule:
+    # 06:00 UTC every third day. Cron on GitHub Actions is best-effort and
+    # can be delayed during busy periods, so this runs well inside the
+    # 7-day window rather than close to it.
+    - cron: "0 6 */3 * *"
+  workflow_dispatch: # lets you trigger it manually to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install driver
+        run: pip install "psycopg[binary]"
+
+      - name: Ping database
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'EOF'
+          import os
+          import psycopg
+
+          # The app's URL carries a SQLAlchemy-specific prefix that psycopg
+          # itself does not understand, so strip it if present.
+          url = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+
+          with psycopg.connect(url) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("SELECT count(*) FROM repositories")
+                  print("Repositories:", cur.fetchone()[0])
+
+          print("Ping OK")
+          EOF
