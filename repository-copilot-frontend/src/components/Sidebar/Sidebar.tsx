@@ -1,22 +1,33 @@
-import { GitBranch, Github, Info, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react'
+import {
+  GitBranch,
+  Github,
+  Info,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+} from 'lucide-react'
 import { RepositoryCard } from './RepositoryCard'
-import { ThemeToggle } from '@/components/ThemeToggle/ThemeToggle'
 import { SettingsDialog } from '@/components/SettingsDialog/SettingsDialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useAppState } from '@/lib/store'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
 export function Sidebar({ loadingSessions }: { loadingSessions: boolean }) {
   const {
-  sessions,
-  activeSessionId,
-  setActiveSessionId,
-  histories,
-  sidebarCollapsed,
-  setSidebarCollapsed,
-  setShowRepositoryInput,
-} = useAppState()
+    sessions,
+    activeSessionId,
+    setActiveSessionId,
+    histories,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    setShowRepositoryInput,
+  } = useAppState()
+
+  // The auth listener in App picks this up and returns to the login screen.
+  const signOut = () => supabase.auth.signOut()
 
   if (sidebarCollapsed) {
     return (
@@ -32,7 +43,15 @@ export function Sidebar({ loadingSessions }: { loadingSessions: boolean }) {
           <PanelLeftOpen className="h-4 w-4" />
         </button>
         <div className="mt-auto flex flex-col items-center gap-1">
-          <ThemeToggle collapsed />
+          <Tooltip content="Sign out">
+            <button
+              onClick={signOut}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-text-mid hover:bg-elevated hover:text-text-hi"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </Tooltip>
         </div>
       </aside>
     )
@@ -113,7 +132,7 @@ export function Sidebar({ loadingSessions }: { loadingSessions: boolean }) {
           </button>
         </SettingsDialog>
         <a
-          href="https://github.com"
+          href="https://github.com/UTTI-BHAI/GitHub-Repository-Copilot"
           target="_blank"
           rel="noreferrer"
           className={cn(
@@ -122,9 +141,12 @@ export function Sidebar({ loadingSessions }: { loadingSessions: boolean }) {
         >
           <Github className="h-4 w-4" /> GitHub
         </a>
-        <div className="px-1 pt-1">
-          <ThemeToggle />
-        </div>
+        <button
+          onClick={signOut}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-text-mid hover:bg-elevated hover:text-text-hi"
+        >
+          <LogOut className="h-4 w-4" /> Sign out
+        </button>
       </div>
     </aside>
   )

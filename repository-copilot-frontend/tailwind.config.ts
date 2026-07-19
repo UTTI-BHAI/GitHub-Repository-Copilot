@@ -1,23 +1,30 @@
 import type { Config } from 'tailwindcss'
 
 export default {
-  darkMode: ['class'],
+  // Dark mode removed — the app ships a single light theme.
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        ink: '#0A0C10',
-        panel: '#12151B',
-        elevated: '#1B1F27',
-        elevated2: '#232833',
-        hairline: '#262B35',
-        'text-hi': '#E7E9EE',
-        'text-mid': '#9BA3B4',
-        'text-low': '#5C6472',
+        // Warm near-blacks rather than the previous blue-tinted #0A0C10.
+        // Shifting the neutrals toward brown makes long reading sessions
+        // easier and stops the surfaces reading as glossy.
+        ink: '#1F1E1D', // app background
+        panel: '#262624', // sidebar and panels
+        elevated: '#30302E', // cards and inputs
+        elevated2: '#3A3A37', // raised surfaces
+        hairline: '#3E3E3B', // borders
+
+        // Off-white rather than pure white — pure #FFF on a dark surface
+        // glares and exaggerates contrast.
+        'text-hi': '#F5F3EE',
+        'text-mid': '#B7B4AC',
+        'text-low': '#7E7B74',
+
         violet: {
-          DEFAULT: '#7C6AEF',
-          dim: '#5A4FBF',
-          bright: '#9686FF',
+          DEFAULT: '#388087',  // buttons and filled surfaces
+          dim: '#2A666C',      // hover and active
+          bright: '#7CC3CB',   // icons and highlights on dark
         },
         amber: {
           DEFAULT: '#E8A33D',
@@ -34,7 +41,7 @@ export default {
       boxShadow: {
         glass: '0 8px 32px rgba(0,0,0,0.35)',
         soft: '0 1px 2px rgba(0,0,0,0.4)',
-        glow: '0 0 0 1px rgba(124,106,239,0.25), 0 0 24px rgba(124,106,239,0.15)',
+        glow: '0 0 0 1px rgba(56,128,135,0.3), 0 0 24px rgba(56,128,135,0.15)',
       },
       backdropBlur: {
         xs: '2px',

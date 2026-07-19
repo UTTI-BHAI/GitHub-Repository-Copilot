@@ -9,10 +9,9 @@ import {
   type SetStateAction,
 } from 'react'
 import type { Session } from '@/types/Session'
-import type { ChatMessage } from '@/types/Chat'
+import { MODEL_OPTIONS, type ChatMessage } from '@/types/Chat'
 
 const HISTORY_KEY = 'rc.chatHistories'
-const THEME_KEY = 'rc.theme'
 const SIDEBAR_KEY = 'rc.sidebarCollapsed'
 const MODEL_KEY = 'rc.model'
 
@@ -37,8 +36,6 @@ interface AppState {
   updateMessage: (sessionId: string, messageId: string, patch: Partial<ChatMessage>) => void
   removeMessage: (sessionId: string, messageId: string) => void
   setSessionHistory: (sessionId: string, messages: ChatMessage[]) => void
-  theme: 'dark' | 'light'
-  toggleTheme: () => void
   sidebarCollapsed: boolean
   setSidebarCollapsed: (v: boolean) => void
   rightPanelOpen: boolean
@@ -55,24 +52,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [histories, setHistories] = useState<ChatHistories>(() => readHistories())
-  const [theme, setTheme] = useState<'dark' | 'light'>(
-    () => (localStorage.getItem(THEME_KEY) as 'dark' | 'light') || 'dark'
-  )
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => localStorage.getItem(SIDEBAR_KEY) === 'true'
   )
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [showRepositoryInput, setShowRepositoryInput] = useState(true)
-  const [model, setModel] = useState<string>(() => localStorage.getItem(MODEL_KEY) || 'gpt-4.1')
+  const [model, setModel] = useState<string>(
+    // Falls back to the first available option so renaming the model list
+    // doesn't leave a stale id here.
+    () => localStorage.getItem(MODEL_KEY) || MODEL_OPTIONS[0].id
+  )
 
   useEffect(() => {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(histories))
   }, [histories])
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-    localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed))
@@ -114,8 +107,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           ...prev,
           [sessionId]: messages,
         })),
-      theme,
-      toggleTheme: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
       sidebarCollapsed,
       setSidebarCollapsed,
       rightPanelOpen,
@@ -125,7 +116,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       model,
       setModel,
     }),
-    [sessions, activeSessionId, histories, theme, sidebarCollapsed, rightPanelOpen, model]
+    [sessions, activeSessionId, histories, sidebarCollapsed, rightPanelOpen, model]
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>

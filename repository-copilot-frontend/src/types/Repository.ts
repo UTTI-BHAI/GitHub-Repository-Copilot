@@ -24,6 +24,6 @@ export const LANGUAGE_COLORS: Record<string, string> = {
   Rust: '#F85149',
   Java: '#E8A33D',
   Ruby: '#F85149',
-  'C++': '#9686FF',
-  Default: '#7C6AEF',
+  'C++': '#7CC3CB',
+  Default: '#388087',
 }

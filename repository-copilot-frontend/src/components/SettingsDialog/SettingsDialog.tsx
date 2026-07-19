@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/Dialog'
 import { ModelSelector } from '@/components/ModelSelector/ModelSelector'
-import { ThemeToggle } from '@/components/ThemeToggle/ThemeToggle'
+
 import { cn } from '@/lib/utils'
 
 type Tab = 'settings' | 'about'
@@ -37,7 +37,7 @@ export function SettingsDialog({
 
         {tab === 'settings' ? (
           <div className="space-y-4">
-            <ThemeToggle />
+
             <div>
               <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-low">
                 Default model

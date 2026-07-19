@@ -27,7 +27,7 @@ export interface ModelOption {
 }
 
 export const MODEL_OPTIONS: ModelOption[] = [
-  { id: 'gpt-4.1', label: 'GPT-4.1', available: true },
+  { id: 'Gemini Flash', label: 'Gemini Flash', available: true },
   { id: 'gpt-5', label: 'GPT-5', available: false },
   { id: 'claude', label: 'Claude', available: false },
   { id: 'gemini', label: 'Gemini', available: false },

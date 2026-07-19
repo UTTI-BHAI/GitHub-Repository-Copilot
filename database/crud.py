@@ -152,9 +152,14 @@ def get_or_create_repository(
 def create_chat(
     db: Session,
     repository_id: int,
+    user_id: str,
     title: str = "New Chat",
 ) -> ChatSession:
-    chat = ChatSession(repository_id=repository_id, title=title)
+    chat = ChatSession(
+        repository_id=repository_id,
+        user_id=user_id,
+        title=title,
+    )
     db.add(chat)
     db.commit()
     db.refresh(chat)
@@ -163,6 +168,33 @@ def create_chat(
 
 def get_chat(db: Session, chat_id: int) -> Optional[ChatSession]:
     return db.get(ChatSession, chat_id)
+
+
+def get_owned_chat(
+    db: Session,
+    chat_id: int,
+    user_id: str,
+) -> Optional[ChatSession]:
+    """
+    A chat, but only if it belongs to this user.
+
+    Returning None for someone else's chat means the endpoint responds with
+    "not found" rather than "forbidden" — no reason to confirm that another
+    user's conversation exists.
+    """
+    chat = db.get(ChatSession, chat_id)
+    if chat is None or chat.user_id != user_id:
+        return None
+    return chat
+
+
+def list_chats_for_user(db: Session, user_id: str) -> List[ChatSession]:
+    return (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user_id)
+        .order_by(ChatSession.created_at.desc())
+        .all()
+    )
 
 
 def list_chats_for_repository(

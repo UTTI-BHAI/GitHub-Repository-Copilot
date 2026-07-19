@@ -13,6 +13,7 @@ from vector_store import (
     delete_collection,
 )
 
+from auth import get_current_user
 from database.connection import engine, Base, get_db, SessionLocal
 from database import crud, models          # noqa: F401  (import registers tables on Base)
 from database.models import (
@@ -121,6 +122,7 @@ def clone_repo(
     request: CloneRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
 ):
     """
     Starts indexing and returns immediately.
@@ -140,7 +142,12 @@ def clone_repo(
         qdrant_collection=collection_name,
     )
 
-    chat = crud.create_chat(db, repository_id=repository.id, title=repo_name)
+    chat = crud.create_chat(
+        db,
+        repository_id=repository.id,
+        user_id=user["id"],
+        title=repo_name,
+    )
 
     # Re-run indexing for new repositories and for ones that previously
     # failed; leave ready and in-progress ones alone.
@@ -160,7 +167,11 @@ def clone_repo(
 
 
 @app.get("/repositories/{repository_id}/status")
-def repository_status(repository_id: int, db: Session = Depends(get_db)):
+def repository_status(
+    repository_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     """Polled by the client while indexing runs."""
     repository = crud.get_repository(db, repository_id)
     if repository is None:
@@ -177,8 +188,12 @@ def repository_status(repository_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/chat")
-def chat(request: ChatRequest, db: Session = Depends(get_db)):
-    chat = crud.get_chat(db, int(request.session_id))
+def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    chat = crud.get_owned_chat(db, int(request.session_id), user["id"])
     if chat is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
@@ -227,8 +242,12 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/chats/{chat_id}/messages")
-def get_chat_messages(chat_id: int, db: Session = Depends(get_db)):
-    chat = crud.get_chat(db, chat_id)
+def get_chat_messages(
+    chat_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    chat = crud.get_owned_chat(db, chat_id, user["id"])
     if chat is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
@@ -240,17 +259,23 @@ def get_chat_messages(chat_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/sessions")
-def get_sessions(db: Session = Depends(get_db)):
+def get_sessions(
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Only this user's chats. Repositories are shared, conversations are not."""
     result = []
-    for repository in crud.list_repositories(db):
-        for chat in repository.chats:
-            result.append({
-                "id": str(chat.id),
-                "repo_name": repository.repo_name,
-                "url": repository.github_url,
-                "title": chat.title,
-                "index_status": repository.index_status,
-            })
+
+    for chat in crud.list_chats_for_user(db, user["id"]):
+        repository = chat.repository
+        result.append({
+            "id": str(chat.id),
+            "repo_name": repository.repo_name,
+            "url": repository.github_url,
+            "title": chat.title,
+            "index_status": repository.index_status,
+        })
+
     return result
 
 

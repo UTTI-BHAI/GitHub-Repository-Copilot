@@ -55,6 +55,12 @@ class ChatSession(Base):
         nullable=False,
     )
 
+    # Supabase user id (a UUID string). Repositories are shared because they
+    # are public GitHub projects — indexing one once serves everyone and
+    # saves embedding quota. Conversations are private, so ownership is
+    # tracked here and every chat read is filtered by it.
+    user_id = Column(String, nullable=False, index=True)
+
     title = Column(String, default="New Chat")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
