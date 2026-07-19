@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios'
+import { supabase } from '@/lib/supabase'
 import type { CloneRequest, CloneResponse, Session } from '@/types/Session'
 import type { ChatRequest, ChatResponse } from '@/types/Chat'
 
@@ -12,6 +13,21 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// Attach the signed-in user's token to every request. getSession() reads the
+// token from storage and refreshes it when expired, so nothing downstream has
+// to think about token lifetimes.
+apiClient.interceptors.request.use(async (config) => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (session) {
+    config.headers.Authorization = `Bearer ${session.access_token}`
+  }
+
+  return config
+})
+
 export class ApiError extends Error {
   kind:
     | 'network'
@@ -22,6 +38,8 @@ export class ApiError extends Error {
     | 'llm_unavailable'
     | 'invalid_url'
     | 'empty_repository'
+    | 'unauthorized'
+    | 'not_ready'
     | 'unknown'
 
   constructor(message: string, kind: ApiError['kind'] = 'unknown') {
@@ -32,16 +50,29 @@ export class ApiError extends Error {
 
 function classifyError(error: unknown): ApiError {
   if (axios.isAxiosError(error)) {
-    const err = error as AxiosError<{ detail?: string }>
+    const err = error as AxiosError<{ detail?: string | { message?: string } }>
     if (!err.response) {
       return new ApiError(
         'Cannot reach the backend. Confirm the FastAPI server is running.',
         'backend_offline'
       )
     }
-    const detail = err.response.data?.detail || ''
+
+    const rawDetail = err.response.data?.detail
+    const detail =
+      typeof rawDetail === 'string' ? rawDetail : rawDetail?.message || ''
     const status = err.response.status
 
+    if (status === 401) {
+      return new ApiError('Your session expired. Sign in again.', 'unauthorized')
+    }
+    // The backend returns 409 while a repository is still being indexed.
+    if (status === 409) {
+      return new ApiError(
+        detail || 'This repository is still being indexed.',
+        'not_ready'
+      )
+    }
     if (status === 422 || /invalid.*url/i.test(detail)) {
       return new ApiError('That does not look like a valid GitHub repository URL.', 'invalid_url')
     }
@@ -51,7 +82,7 @@ function classifyError(error: unknown): ApiError {
     if (/qdrant/i.test(detail)) {
       return new ApiError('The vector store is temporarily unavailable.', 'qdrant_unavailable')
     }
-    if (/llm|model/i.test(detail)) {
+    if (/llm|model|gemini|embedding/i.test(detail)) {
       return new ApiError('The language model is temporarily unavailable.', 'llm_unavailable')
     }
     if (/empty/i.test(detail)) {
@@ -65,9 +96,39 @@ function classifyError(error: unknown): ApiError {
   return new ApiError('An unexpected error occurred.', 'unknown')
 }
 
+export interface RepositoryStatus {
+  repository_id: number
+  repo_name: string
+  index_status: 'pending' | 'indexing' | 'ready' | 'failed'
+  chunk_count: number | null
+  error: string | null
+  ready: boolean
+}
+
+export interface StoredMessage {
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
 export async function cloneRepository(payload: CloneRequest): Promise<CloneResponse> {
   try {
+    // Returns 202 immediately — indexing continues in the background and the
+    // caller polls fetchRepositoryStatus until it reports ready.
     const { data } = await apiClient.post<CloneResponse>('/clone', payload)
+    return data
+  } catch (error) {
+    throw classifyError(error)
+  }
+}
+
+export async function fetchRepositoryStatus(
+  repositoryId: number
+): Promise<RepositoryStatus> {
+  try {
+    const { data } = await apiClient.get<RepositoryStatus>(
+      `/repositories/${repositoryId}/status`
+    )
     return data
   } catch (error) {
     throw classifyError(error)
@@ -77,6 +138,15 @@ export async function cloneRepository(payload: CloneRequest): Promise<CloneRespo
 export async function askQuestion(payload: ChatRequest): Promise<ChatResponse> {
   try {
     const { data } = await apiClient.post<ChatResponse>('/chat', payload)
+    return data
+  } catch (error) {
+    throw classifyError(error)
+  }
+}
+
+export async function fetchMessages(chatId: string): Promise<StoredMessage[]> {
+  try {
+    const { data } = await apiClient.get<StoredMessage[]>(`/chats/${chatId}/messages`)
     return data
   } catch (error) {
     throw classifyError(error)

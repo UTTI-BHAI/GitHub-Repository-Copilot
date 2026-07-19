@@ -1,18 +1,61 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { v4 as uuid } from 'uuid'
-import { askQuestion, ApiError } from '@/services/api'
+import { askQuestion, fetchMessages, ApiError } from '@/services/api'
 import { useAppState } from '@/lib/store'
 import type { ChatMessage } from '@/types/Chat'
 
 const STREAM_CHAR_INTERVAL_MS = 12
 
 export function useChat(sessionId: string | null) {
-  const { histories, appendMessage, updateMessage, removeMessage } = useAppState()
+  const { histories, appendMessage, updateMessage, removeMessage, setSessionHistory } =
+    useAppState()
   const [isThinking, setIsThinking] = useState(false)
   const [phase, setPhase] = useState<'thinking' | 'generating' | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+
+  // Sessions whose transcript has already been pulled this mount, so
+  // switching back and forth doesn't refetch on every render.
+  const loadedRef = useRef<Set<string>>(new Set())
 
   const messages: ChatMessage[] = sessionId ? histories[sessionId] || [] : []
+
+  // The database is the source of truth for a conversation — localStorage is
+  // only a per-browser cache. Loading the transcript on open is what makes
+  // chats survive a different browser, a cleared cache, or a server restart.
+  useEffect(() => {
+    if (!sessionId || loadedRef.current.has(sessionId)) return
+
+    let cancelled = false
+    loadedRef.current.add(sessionId)
+    setIsLoadingHistory(true)
+
+    fetchMessages(sessionId)
+      .then((stored) => {
+        if (cancelled) return
+
+        const restored: ChatMessage[] = stored.map((m) => ({
+          id: uuid(),
+          role: m.role,
+          content: m.content,
+          createdAt: m.created_at,
+        }))
+
+        setSessionHistory(sessionId, restored)
+      })
+      .catch(() => {
+        // A failed load is not worth blocking the chat over — whatever is in
+        // local state stays, and allow a retry on the next open.
+        loadedRef.current.delete(sessionId)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, setSessionHistory])
 
   const streamIn = useCallback(
     (sid: string, messageId: string, fullText: string) =>
@@ -115,5 +158,5 @@ export function useChat(sessionId: string | null) {
     [sessionId, messages, updateMessage]
   )
 
-  return { messages, send, regenerate, vote, isThinking, phase, error }
+  return { messages, send, regenerate, vote, isThinking, phase, error, isLoadingHistory }
 }

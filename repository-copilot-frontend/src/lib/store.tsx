@@ -36,6 +36,7 @@ interface AppState {
   appendMessage: (sessionId: string, message: ChatMessage) => void
   updateMessage: (sessionId: string, messageId: string, patch: Partial<ChatMessage>) => void
   removeMessage: (sessionId: string, messageId: string) => void
+  setSessionHistory: (sessionId: string, messages: ChatMessage[]) => void
   theme: 'dark' | 'light'
   toggleTheme: () => void
   sidebarCollapsed: boolean
@@ -104,6 +105,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setHistories((prev) => ({
           ...prev,
           [sessionId]: (prev[sessionId] || []).filter((m) => m.id !== messageId),
+        })),
+      // Replaces a whole conversation in one update. Used when loading the
+      // transcript back from the database, where appending message by message
+      // would re-render repeatedly and risk duplicating what's already local.
+      setSessionHistory: (sessionId, messages) =>
+        setHistories((prev) => ({
+          ...prev,
+          [sessionId]: messages,
         })),
       theme,
       toggleTheme: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
